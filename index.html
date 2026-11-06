@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Cashi Dino</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #f7f7f7; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #safe { position: fixed; inset: 0; visibility: hidden; pointer-events: none; padding-left: env(safe-area-inset-left, 0px); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="safe"></div>
+<script>
+(() => {
+  // Brand colours, plus the grey of the offline game
+  const YELLOW = '#FFAE00', PURPLE = '#3E2B9A', IVORY = '#FFFCF5';
+  const MONO_BG = '#f7f7f7', MONO_INK = '#535353';
+
+  // World is 300 units tall; the screen scales to fit
+  const WORLD_H = 300, MIN_W = 520, MIN_W_UPRIGHT = 360;
+  const STREET_H = 236, GROUND_Y = 262, ROAD_BOTTOM = 280;
+  const DINO_H = 96, DINO_W = DINO_H * 275 / 260;
+  const TILE_W = STREET_H * 496 / 480;            // one block of shops
+  // The street repeats every 5 blocks. Blocks 1 and 4 have a yellow Cashi Merchant tea stall,
+  // and the CashiPlus store stands in the shop line where block 2 meets block 3.
+  // Blocks 0 and 2 get a Cashi sign on the tuk tuk.
+  const CYCLE = 5, MERCHANT_BLOCKS = [1, 4], TUKTUK_BLOCKS = [0, 2], STORE_AT = 3;
+  const STORE_H = 105, STORE_W = STORE_H * 640 / 382, STORE_BASE = 226;
+  const GRAVITY = 1900, JUMP_V = 640;
+  const START_SPEED = 260, ACCEL = 7;
+  let maxSpeed = 640; // lower on upright phones, which see less of the road ahead
+  const REVEAL_TIME = 1.3;
+  const shareText = s => `I scored ${s} on the Cashi dino game. Can you beat me? Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`;
+
+  // Older Android browsers lack rounded rectangles on canvas
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+      this.moveTo(x + r, y);
+      this.arcTo(x + w, y, x + w, y + h, r); this.arcTo(x + w, y + h, x, y + h, r);
+      this.arcTo(x, y + h, x, y, r); this.arcTo(x, y, x + w, y, r);
+      this.closePath();
+    };
+  }
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let scale = 1, viewW = MIN_W, offsetY = 0, dpr = 1, hudX = 14;
+
+  const img = name => { const i = new Image(); i.src = 'src/' + name; return i; };
+  const art = { dino: img('dino.png'), dinoGrey: img('dino_grey.png'), street: img('street.jpg'), merchant: img('street_merchant.jpg'), store: img('store.png') };
+  const ready = i => i.complete && i.naturalWidth > 0;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    // phones held upright show a narrower slice so the game stays big
+    scale = Math.min(h / WORLD_H, w / (w < h ? MIN_W_UPRIGHT : MIN_W));
+    maxSpeed = w < h ? 520 : 640;
+    viewW = w / scale;
+    offsetY = (h - WORLD_H * scale) / 2;
+    // keep the score clear of a phone notch when held sideways
+    hudX = 14 + (parseFloat(getComputedStyle(document.getElementById('safe')).paddingLeft) || 0) / scale;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Pixel cactus maps: 1 = body, 2 = shade, 3 = highlight
+  const CACTI = [
+    ['..33..', '.3112.', '.3112.', '.3112.', '23112.', '23112.', '23112.', '211122', '.31112', '.3112.', '.3112.', '.3112.'],
+    ['...33...', '..3112..', '..3112..', '..3112.2', '2.3112.2', '2.311212', '2.311212', '21311112', '.1311112', '.11112..', '..3112..', '..3112..', '..3112..', '..3112..', '..3112..', '..3112..'],
+    ['..33....33..', '.3112..3112.', '.3112..3112.', '23112.23112.', '23112.23112.', '23112.23112.', '211122111122', '.31112.31112', '.3112..3112.', '.3112..3112.', '.3112..3112.', '.3112..3112.']
+  ];
+  const CACTUS_COL = { 1: '#3f9b3c', 2: '#276b2a', 3: '#7cc75e' };
+  const PX = 4;
+
+  // ready: grey offline look. reveal: colour sweeps in. playing. over.
+  let state = 'ready', revealStart = 0, overAt = 0, shareBtn = null, plane = null, nextPlaneAt = 3;
+  let speed, distance, score, obstacles, nextGap, streetX, roadX, dino, time = 0, dust;
+
+  function reset(firstRun) {
+    speed = START_SPEED; distance = 0; score = 0;
+    obstacles = []; nextGap = firstRun ? 760 : 420; roadX = 0; dust = [];
+    streetX = TILE_W * STORE_AT - viewW / 2; // CashiPlus store sits mid screen when the colour arrives
+    dino = { x: 46, y: GROUND_Y - DINO_H, vy: 0, grounded: true };
+  }
+  reset(true);
+
+  function shareOnWhatsApp() {
+    const url = 'https://wa.me/?text=' + encodeURIComponent(shareText(score));
+    if (!window.open(url, '_blank')) location.href = url;
+  }
+
+  function tap(wx, wy) {
+    if (state === 'ready') { state = 'reveal'; revealStart = time; nextPlaneAt = time + REVEAL_TIME + 1.5; return; }
+    if (state === 'over') {
+      if (time - overAt < 0.5) return; // a late jump tap should not restart straight away
+      const b = shareBtn;
+      if (b && wx !== undefined && wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) { shareOnWhatsApp(); return; }
+      reset(false); state = 'playing'; return;
+    }
+    if (state === 'playing' && dino.grounded) { dino.vy = -JUMP_V; dino.grounded = false; }
+  }
+  canvas.addEventListener('pointerdown', e => { e.preventDefault(); tap(e.clientX / scale, (e.clientY - offsetY) / scale); });
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
+  });
+
+  function spawn() {
+    const map = CACTI[Math.floor(Math.random() * CACTI.length)];
+    const w = map[0].length * PX, h = map.length * PX;
+    obstacles.push({ map, x: viewW + 20, y: GROUND_Y - h + 2, w, h });
+    nextGap = speed * 0.9 + 140 + Math.random() * 260;
+  }
+
+  function dinoBoxes() {
+    const x = dino.x, y = dino.y;
+    return [
+      { x: x + DINO_W * 0.14, y: y + DINO_H * 0.42, w: DINO_W * 0.62, h: DINO_H * 0.55 },
+      { x: x + DINO_W * 0.60, y: y + DINO_H * 0.05, w: DINO_W * 0.34, h: DINO_H * 0.33 }
+    ];
+  }
+  const hit = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+  function update(dt) {
+    time += dt;
+    if (state === 'reveal' && time - revealStart >= REVEAL_TIME) state = 'playing';
+    if (state !== 'playing') return;
+
+    speed = Math.min(maxSpeed, speed + ACCEL * dt);
+    const move = speed * dt;
+    distance += move;
+    score = Math.floor(distance / 12);
+    streetX += move * 0.25;
+    roadX += move;
+
+    // A Cashi plane crosses the sky now and then
+    if (!plane && time > nextPlaneAt) plane = { x: viewW + 10, y: 22 + Math.random() * 30, v: 70 + Math.random() * 30 };
+    if (plane) {
+      plane.x -= plane.v * dt;
+      if (plane.x < -PLANE_W - 10) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
+    }
+
+    dino.vy += GRAVITY * dt;
+    dino.y += dino.vy * dt;
+    if (dino.y >= GROUND_Y - DINO_H) { dino.y = GROUND_Y - DINO_H; dino.vy = 0; dino.grounded = true; }
+
+    if (dino.grounded && Math.random() < 0.35) dust.push({ x: dino.x + 20, y: GROUND_Y - 4, life: 0.35 });
+    dust.forEach(d => { d.x -= move; d.life -= dt; });
+    dust = dust.filter(d => d.life > 0);
+
+    obstacles.forEach(o => { o.x -= move; });
+    obstacles = obstacles.filter(o => o.x + o.w > -20);
+    const last = obstacles[obstacles.length - 1];
+    if (!last || viewW + 20 - (last.x + last.w) >= nextGap) spawn();
+
+    // One life: any cactus ends the run
+    const boxes = dinoBoxes();
+    for (const o of obstacles) {
+      const ob = { x: o.x + 3, y: o.y + 3, w: o.w - 6, h: o.h - 3 };
+      if (boxes.some(b => hit(b, ob))) { state = 'over'; overAt = time; break; }
+    }
+  }
+
+  const wrap = (v, m) => ((v % m) + m) % m;
+
+  // Purple sign above the yellow tea stall
+  function drawMerchantSign(tileX) {
+    const cx = tileX + 211, w = 66, top = 133;
+    ctx.fillStyle = PURPLE;
+    ctx.beginPath(); ctx.roundRect(cx - w / 2, top, w, 26, 4); ctx.fill();
+    text('Cashi', cx, top + 4, 7, 'center', YELLOW, null);
+    text('Merchant', cx, top + 14, 7, 'center', YELLOW, null);
+  }
+
+  // Purple Cashi sign on the rear side panel of the tuk tuk
+  function drawTuktukSign(tileX) {
+    ctx.fillStyle = PURPLE;
+    ctx.beginPath(); ctx.roundRect(tileX + 82, 211, 30, 11, 2); ctx.fill();
+    text('Cashi', tileX + 97, 214, 5.5, 'center', YELLOW, null);
+  }
+
+  // Yellow and purple Cashi plane, drawn as a clean illustration with outlines like the street art.
+  // Painted once at 4x into its own canvas; nose points left. Box is 140 x 48 units.
+  const PLANE_W = 140, PLANE_H = 48, PLANE_K = 4, OUTLINE = '#1f1846';
+  let planeImg = null;
+  function paintPlane() {
+    const c = document.createElement('canvas');
+    c.width = PLANE_W * PLANE_K; c.height = PLANE_H * PLANE_K;
+    const g = c.getContext('2d');
+    g.scale(PLANE_K, PLANE_K);
+    g.lineJoin = 'round'; g.lineWidth = 1.3; g.strokeStyle = OUTLINE;
+    const shape = (pts, fill) => {
+      g.beginPath(); g.moveTo(pts[0], pts[1]);
+      for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]);
+      g.closePath(); g.fillStyle = fill; g.fill(); g.stroke();
+    };
+    const body = new Path2D('M16 15 L104 15 C114 15 122 12 131 6 L136 8 C132 18 126 28 116 33 L18 34 C8 34 2 30 2 24.5 C2 19 8 15 16 15 Z');
+
+    shape([104, 16, 117, 0, 130, 0, 131, 8], PURPLE);          // tail fin
+    g.save(); g.clip(body);                                     // body with highlight, cheatline and belly shade
+    g.fillStyle = YELLOW; g.fillRect(0, 0, PLANE_W, PLANE_H);
+    g.fillStyle = '#FFC94D'; g.fillRect(0, 15, PLANE_W, 3);
+    g.fillStyle = PURPLE; g.fillRect(0, 28, PLANE_W, 2.2);
+    g.fillStyle = '#E39A00'; g.fillRect(0, 30.2, PLANE_W, 10);
+    g.restore();
+    g.stroke(body);
+    shape([8, 20, 17, 19, 17, 23.5, 5.5, 24], '#2C4A7A');       // cockpit window
+    g.fillStyle = '#BFE6FF'; g.fillRect(10, 20, 3, 1.4);
+    shape([112, 24, 136, 19, 139, 22, 118, 29], PURPLE);        // tail wing
+    shape([50, 29, 74, 29, 92, 45, 82, 47], PURPLE);            // main wing
+    g.beginPath(); g.roundRect(57, 33, 17, 7, 3.5); g.fillStyle = '#2C1F73'; g.fill(); g.stroke(); // engine
+    g.fillStyle = '#5a48c4'; g.fillRect(58.5, 34.2, 3, 4.6);
+    return c;
+  }
+  function drawPlane(p) {
+    if (!planeImg) planeImg = paintPlane();
+    const x = p.x, y = p.y + Math.sin(time * 2) * 2;
+    ctx.drawImage(planeImg, x, y, PLANE_W, PLANE_H);
+    text('Cashi', x + 62, y + 17, 10, 'center', PURPLE, null);
+  }
+
+  function drawStreet() {
+    if (!ready(art.street)) return;
+    for (let i = Math.floor(streetX / TILE_W); i * TILE_W - streetX < viewW; i++) {
+      const x = i * TILE_W - streetX;
+      const merchant = MERCHANT_BLOCKS.includes(wrap(i, CYCLE)) && ready(art.merchant);
+      ctx.drawImage(merchant ? art.merchant : art.street, Math.floor(x), 0, Math.ceil(TILE_W) + 1, STREET_H);
+      if (merchant) drawMerchantSign(x);
+      if (TUKTUK_BLOCKS.includes(wrap(i, CYCLE))) drawTuktukSign(x);
+    }
+    if (!ready(art.store)) return;
+    for (let k = Math.floor((streetX - STORE_AT * TILE_W) / (CYCLE * TILE_W)); ; k++) {
+      const c = (STORE_AT + k * CYCLE) * TILE_W - streetX;
+      if (c - STORE_W / 2 > viewW) break;
+      if (c + STORE_W / 2 < 0) continue;
+      ctx.fillStyle = 'rgba(90,50,20,0.25)';
+      ctx.beginPath(); ctx.ellipse(c, STORE_BASE - 1, STORE_W * 0.5, 4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.drawImage(art.store, Math.floor(c - STORE_W / 2), STORE_BASE - STORE_H, STORE_W, STORE_H);
+    }
+  }
+
+  function drawRoad() {
+    ctx.fillStyle = '#d49d65'; ctx.fillRect(0, STREET_H, viewW, ROAD_BOTTOM - STREET_H);
+    ctx.fillStyle = '#b98252'; ctx.fillRect(0, STREET_H, viewW, 3);
+    ctx.fillStyle = '#f3e4c6';
+    const dash = 44, gap = 36;
+    for (let x = -(roadX % (dash + gap)); x < viewW; x += dash + gap) ctx.fillRect(Math.floor(x), 250, dash, 4);
+    ctx.fillStyle = '#fad46f'; ctx.fillRect(0, ROAD_BOTTOM, viewW, WORLD_H - ROAD_BOTTOM + 400);
+    ctx.fillStyle = '#e0b552';
+    for (let i = 0; i < 14; i++) {
+      const px = ((i * 97 - roadX) % (viewW + 40) + viewW + 40) % (viewW + 40) - 20;
+      ctx.fillRect(Math.floor(px), ROAD_BOTTOM + 6 + (i * 37) % 14, 6, 3);
+    }
+  }
+
+  // Each cactus is painted once into its own small canvas, which keeps slow phones smooth
+  const cactusCache = new Map();
+  function cactusImage(map) {
+    if (cactusCache.has(map)) return cactusCache.get(map);
+    const c = document.createElement('canvas');
+    c.width = map[0].length * PX; c.height = map.length * PX;
+    const g = c.getContext('2d');
+    map.forEach((row, r) => {
+      for (let i = 0; i < row.length; i++) {
+        if (row[i] === '.') continue;
+        g.fillStyle = CACTUS_COL[row[i]];
+        g.fillRect(i * PX, r * PX, PX, PX);
+      }
+    });
+    cactusCache.set(map, c);
+    return c;
+  }
+  function drawCactus(o) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(cactusImage(o.map), Math.floor(o.x), Math.floor(o.y));
+    ctx.imageSmoothingEnabled = true;
+  }
+
+  function drawDino(image) {
+    if (!ready(image)) return;
+    const bob = dino.grounded && state === 'playing' ? (Math.floor(time * 10) % 2) * -3 : 0;
+    ctx.drawImage(image, dino.x, dino.y + bob, DINO_W, DINO_H);
+  }
+
+  function text(str, x, y, size, align = 'left', color = PURPLE, shadow = IVORY) {
+    ctx.font = `${size}px "Press Start 2P", monospace`;
+    ctx.textAlign = align; ctx.textBaseline = 'top';
+    if (shadow) { ctx.fillStyle = shadow; ctx.fillText(str, x + 2, y + 2); }
+    ctx.fillStyle = color; ctx.fillText(str, x, y);
+  }
+
+  const scoreText = () => 'SCORE: ' + String(score).padStart(4, '0');
+
+  // The full colour world
+  function drawColour() {
+    ctx.fillStyle = '#5cc9d6'; ctx.fillRect(0, -offsetY / scale - 1, viewW, offsetY / scale + 2);
+    drawStreet();
+    if (plane) drawPlane(plane);
+    drawRoad();
+    obstacles.forEach(drawCactus);
+    drawDino(art.dino);
+    ctx.fillStyle = '#f3e4c6';
+    dust.forEach(d => { const s = 3 + (0.35 - d.life) * 14; ctx.globalAlpha = d.life / 0.35; ctx.fillRect(d.x, d.y - s, s, s); });
+    ctx.globalAlpha = 1;
+    text(scoreText(), hudX, 14, 12);
+  }
+
+  // The grey offline look the game opens with
+  function drawMono() {
+    ctx.fillStyle = MONO_BG; ctx.fillRect(0, -offsetY / scale - 1, viewW, WORLD_H + 2 * offsetY / scale + 2);
+    ctx.fillStyle = MONO_INK;
+    ctx.fillRect(0, GROUND_Y - 1, viewW, 2);
+    for (let i = 0; i < 18; i++) ctx.fillRect((i * 61) % viewW, GROUND_Y + 6 + (i * 13) % 12, 2 + (i % 3) * 2, 2);
+    [[viewW * 0.55, 70], [viewW * 0.82, 110]].forEach(([cx, cy]) => {
+      ctx.fillStyle = '#d6d6d6';
+      ctx.fillRect(cx, cy, 46, 4); ctx.fillRect(cx + 8, cy - 6, 26, 6); ctx.fillRect(cx + 16, cy - 10, 12, 4);
+    });
+    drawDino(art.dinoGrey);
+    text(scoreText(), hudX, 14, 12, 'left', MONO_INK, null);
+    // Start box: the Zain message and the start prompt together, still in black and white
+    // The message is the only colour on the grey screen: purple, with DATA FREE on a yellow band
+    if (state === 'ready' || state === 'reveal') { // the colour wipes the box away with everything else
+      const w = Math.min(viewW - 32, 300), x = (viewW - w) / 2, top = 54, h = 104;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
+      ctx.font = '13px "Press Start 2P", monospace';
+      const a = 'Cashi is ', b = 'DATA FREE', aw = ctx.measureText(a).width, bw = ctx.measureText(b).width;
+      const lx = (viewW - aw - bw) / 2, ly = top + 16;
+      ctx.fillStyle = YELLOW; ctx.fillRect(lx + aw - 4, ly - 5, bw + 8, 23);
+      text(a, lx, ly, 13, 'left', PURPLE, null);
+      text(b, lx + aw, ly, 13, 'left', PURPLE, null);
+      text('for Zain users', viewW / 2, top + 44, 13, 'center', PURPLE, null);
+      if (Math.floor(time * 2) % 2 === 0) text('TAP TO START', viewW / 2, top + 76, 11, 'center', MONO_INK, null);
+    }
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = MONO_BG; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, dpr * offsetY);
+
+    if (state === 'ready') { drawMono(); return; }
+
+    drawColour();
+
+    // Colour sweeps in from the left with a blocky pixel edge
+    if (state === 'reveal') {
+      const p = (time - revealStart) / REVEAL_TIME;
+      const edge = p * (viewW + 60) - 30;
+      const top = -offsetY / scale - 1, bottom = WORLD_H + offsetY / scale + 1;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(viewW + 1, top);
+      for (let y = top, n = 0; y < bottom; y += 16, n++) {
+        const x = edge + (n % 2 ? 12 : 0);
+        ctx.lineTo(x, y); ctx.lineTo(x, y + 16);
+      }
+      ctx.lineTo(viewW + 1, bottom);
+      ctx.closePath();
+      ctx.clip();
+      drawMono();
+      ctx.restore();
+    }
+
+    if (state === 'over') {
+      const blink = Math.floor(time * 2) % 2 === 0;
+      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 36, h = 144;
+      ctx.fillStyle = 'rgba(255,252,245,0.96)';
+      ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
+      text('GAME OVER', viewW / 2, top + 16, 16, 'center');
+      text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
+      // WhatsApp share button
+      const bw = Math.min(w - 40, 250), bx = (viewW - bw) / 2, by = top + 62, bh = 38;
+      shareBtn = { x: bx, y: by, w: bw, h: bh };
+      ctx.fillStyle = PURPLE;
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
+      text('SHARE ON WHATSAPP', viewW / 2, by + 14, 10, 'center', YELLOW, null);
+      text('TAP TO PLAY AGAIN', viewW / 2, top + 116, 10, 'center', blink ? PURPLE : '#b07800');
+    }
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+  document.addEventListener('visibilitychange', () => { last = performance.now(); });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
