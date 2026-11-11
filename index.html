@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Cashi Dino</title>
+<link rel="icon" type="image/svg+xml" href="src/favicon.svg">
+<link rel="icon" type="image/png" sizes="180x180" href="src/icon-180.png">
+<link rel="apple-touch-icon" href="src/icon-180.png">
 <style>
   /* Jersey 10 (SIL Open Font License, see FONT_LICENSE_OFL.txt), kept in the game so nothing loads from elsewhere */
   @font-face { font-family: 'Jersey 10'; src: url(src/jersey10.woff2) format('woff2'); font-display: block; }
@@ -144,7 +147,7 @@
     if (!plane && time > nextPlaneAt) plane = { x: viewW + 10, y: 22 + Math.random() * 30, v: 70 + Math.random() * 30 };
     if (plane) {
       plane.x -= plane.v * dt;
-      if (plane.x < -PLANE_W - 10) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
+      if (plane.x < -PLANE_W - BANNER_ROOM) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
     }
 
     dino.vy += GRAVITY * dt;
@@ -189,6 +192,7 @@
   // Yellow and purple Cashi plane, drawn as a clean illustration with outlines like the street art.
   // Painted once at 4x into its own canvas; nose points left. Box is 140 x 48 units.
   const PLANE_W = 140, PLANE_H = 48, PLANE_K = 4, OUTLINE = '#1f1846';
+  const BANNER = 'Recharge Cashi with BBAN', BANNER_SIZE = 8, BANNER_ROOM = 200; // room behind the plane for the banner
   let planeImg = null;
   function paintPlane() {
     const c = document.createElement('canvas');
@@ -222,6 +226,24 @@
   function drawPlane(p) {
     if (!planeImg) planeImg = paintPlane();
     const x = p.x, y = p.y + Math.sin(time * 2) * 2;
+
+    // Banner towed behind the tail, waving more towards its far end
+    ctx.font = font(BANNER_SIZE);
+    const bw = ctx.measureText(BANNER).width + 16, bh = 18, bx = x + PLANE_W + 14, by = y + 8;
+    ctx.strokeStyle = OUTLINE; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x + 136, y + 14); ctx.lineTo(bx, by + 2);
+    ctx.moveTo(x + 136, y + 14); ctx.lineTo(bx, by + bh - 2);
+    ctx.stroke();
+    const wave = u => Math.sin(u * 0.09 - time * 7) * 1.8 * (u / bw);
+    ctx.beginPath();
+    for (let i = 0; i <= 24; i++) { const u = bw * i / 24; ctx.lineTo(bx + u, by + wave(u)); }
+    for (let i = 24; i >= 0; i--) { const u = bw * i / 24; ctx.lineTo(bx + u, by + bh + wave(u)); }
+    ctx.closePath();
+    ctx.fillStyle = PURPLE; ctx.fill();
+    ctx.lineWidth = 1; ctx.stroke();
+    text(BANNER, bx + bw / 2, by + 2, BANNER_SIZE, 'center', YELLOW, null);
+
     ctx.drawImage(planeImg, x, y, PLANE_W, PLANE_H);
     text('Cashi', x + 62, y + 14, 10, 'center', PURPLE, null);
   }
