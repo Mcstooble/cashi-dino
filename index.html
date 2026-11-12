@@ -62,7 +62,24 @@
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  let scale = 1, viewW = MIN_W, offsetY = 0, dpr = 1, hudX = 14;
+  let scale = 1, viewW = MIN_W, offsetY = 0, dpr = 1, ppu = 1, hudX = 14;
+  // Moving things land on whole screen pixels, so they glide evenly instead of jumping in coarse steps
+  const snap = v => Math.round(v * ppu) / ppu;
+
+  // Images are resized once to their size on screen, so each frame is a plain copy (easier on slow phones)
+  const sized = new Map();
+  function drawSized(i, x, y, w, h) {
+    let c = sized.get(i);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = Math.ceil(w * ppu); c.height = Math.ceil(h * ppu);
+      const g = c.getContext('2d');
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(i, 0, 0, c.width, c.height);
+      sized.set(i, c);
+    }
+    ctx.drawImage(c, snap(x), snap(y), c.width / ppu, c.height / ppu);
+  }
 
   const ART_VERSION = 2; // raise when an image changes so browsers fetch the new one
   const img = name => { const i = new Image(); i.src = 'src/' + name + '?v=' + ART_VERSION; return i; };
@@ -80,18 +97,27 @@
     viewW = w / scale;
     offsetY = (h - WORLD_H * scale) / 2;
     // keep the score clear of a phone notch when held sideways
+    ppu = dpr * scale;
+    sized.clear();
     hudX = 14 + (parseFloat(getComputedStyle(document.getElementById('safe')).paddingLeft) || 0) / scale;
   }
   window.addEventListener('resize', resize);
   resize();
 
-  // Pixel cactus maps: 1 = body, 2 = shade, 3 = highlight
-  const CACTI = [
-    ['..33..', '.3112.', '.3112.', '.3112.', '23112.', '23112.', '23112.', '211122', '.31112', '.3112.', '.3112.', '.3112.'],
-    ['...33...', '..3112..', '..3112..', '..3112.2', '2.3112.2', '2.311212', '2.311212', '21311112', '.1311112', '.11112..', '..3112..', '..3112..', '..3112..', '..3112..', '..3112..', '..3112..'],
-    ['..33....33..', '.3112..3112.', '.3112..3112.', '23112.23112.', '23112.23112.', '23112.23112.', '211122111122', '.31112.31112', '.3112..3112.', '.3112..3112.', '.3112..3112.', '.3112..3112.']
+  // Pixel obstacles from a Sudanese street: an ushar bush, stacked tyres and yellow jerry cans.
+  // Map codes: 1 = body, 2 = shade, 3 = highlight, 4 = outline, 5 and 6 = details (flowers, stems, caps)
+  const LINE = '#1f1846'; // the same dark outline as the plane
+  const BUSH = { 1: '#8fae6e', 2: '#5d7f45', 3: '#c3d99a', 4: LINE, 5: '#efe3f7', 6: '#7a5230' };
+  const TYRE = { 1: '#3a3a3a', 2: '#1c1c1c', 3: '#6a6a6a', 4: LINE };
+  const CAN = { 1: '#f2c230', 2: '#c8901a', 3: '#ffe58a', 4: LINE, 5: '#d23a2a' };
+  const tyreStack = n => ['.444444444.'].concat(...Array(n).fill(['43333333334', '41212121214', '42222222224', '.444444444.']));
+  const OBSTACLES = [
+    { col: BUSH, map: ['....444.....', '..443334444.', '.43311133334', '.43151111134', '431111311124', '431131115124', '431511111224', '.4211211224.', '.4222122224.', '..46446464..'] },
+    { col: TYRE, map: tyreStack(2) },
+    { col: TYRE, map: tyreStack(3) },
+    { col: CAN, map: ['444.44.', '4.4.554', '4444444', '4311124', '4312124', '4311124', '4312124', '4311124', '4311224', '4444444'] },
+    { col: CAN, map: ['444.44.444.44.', '4.4.5544.4.554', '44444444444444', '43111244311124', '43121244312124', '43111244311124', '43121244312124', '43111244311124', '43112244311224', '44444444444444'] }
   ];
-  const CACTUS_COL = { 1: '#3f9b3c', 2: '#276b2a', 3: '#7cc75e' };
   const PX = 4;
 
   // ready: grey offline look. reveal: colour sweeps in. playing. over.
@@ -146,9 +172,9 @@
   });
 
   function spawn() {
-    const map = CACTI[Math.floor(Math.random() * CACTI.length)];
-    const w = map[0].length * PX, h = map.length * PX;
-    obstacles.push({ map, x: viewW + 20, y: GROUND_Y - h + 2, w, h });
+    const kind = OBSTACLES[Math.floor(Math.random() * OBSTACLES.length)];
+    const w = kind.map[0].length * PX, h = kind.map.length * PX;
+    obstacles.push({ kind, x: viewW + 20, y: GROUND_Y - h + 2, w, h });
     nextGap = speed * 0.9 + 140 + Math.random() * 260;
   }
 
@@ -198,7 +224,7 @@
     const last = obstacles[obstacles.length - 1];
     if (!last || viewW + 20 - (last.x + last.w) >= nextGap) spawn();
 
-    // One life: any cactus ends the run
+    // One life: any obstacle ends the run
     const boxes = dinoBoxes();
     for (const o of obstacles) {
       const ob = { x: o.x + 3, y: o.y + 3, w: o.w - 6, h: o.h - 3 };
@@ -262,7 +288,7 @@
   }
   function drawPlane(p) {
     if (!planeImg) planeImg = paintPlane();
-    const x = p.x, y = p.y + Math.sin(time * 2) * 2;
+    const x = snap(p.x), y = p.y + Math.sin(time * 2) * 2;
 
     // Banner towed behind the tail, waving more towards its far end
     ctx.font = font(BANNER_SIZE);
@@ -281,17 +307,17 @@
     ctx.lineWidth = 1; ctx.stroke();
     text(BANNER, bx + bw / 2, by + 2, BANNER_SIZE, 'center', YELLOW, null);
 
-    ctx.drawImage(planeImg, x, y, PLANE_W, PLANE_H);
+    drawSized(planeImg, x, y, PLANE_W, PLANE_H);
     text('Cashi', x + 62, y + 14, 10, 'center', PURPLE, null);
   }
 
   function drawStreet() {
     if (!ready(art.street)) return;
     for (let i = Math.floor(streetX / TILE_W); i * TILE_W - streetX < viewW; i++) {
-      const x = i * TILE_W - streetX;
+      const x = snap(i * TILE_W - streetX);
       const merchant = MERCHANT_BLOCKS.includes(wrap(i, CYCLE)) && ready(art.merchant);
       const tuktuk = TUKTUK_BLOCKS.includes(wrap(i, CYCLE)) && ready(art.tuktuk);
-      ctx.drawImage(merchant ? art.merchant : tuktuk ? art.tuktuk : art.street, Math.floor(x), 0, Math.ceil(TILE_W) + 1, STREET_H);
+      drawSized(merchant ? art.merchant : tuktuk ? art.tuktuk : art.street, x, 0, Math.ceil(TILE_W) + 1, STREET_H);
       if (merchant) drawMerchantSign(x);
       if (tuktuk) drawTuktukSign(x);
     }
@@ -302,7 +328,7 @@
       if (c + STORE_W / 2 < 0) continue;
       ctx.fillStyle = 'rgba(90,50,20,0.25)';
       ctx.beginPath(); ctx.ellipse(c, STORE_BASE - 1, STORE_W * 0.5, 4, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.drawImage(art.store, Math.floor(c - STORE_W / 2), STORE_BASE - STORE_H, STORE_W, STORE_H);
+      drawSized(art.store, c - STORE_W / 2, STORE_BASE - STORE_H, STORE_W, STORE_H);
     }
   }
 
@@ -311,35 +337,35 @@
     ctx.fillStyle = '#b98252'; ctx.fillRect(0, STREET_H, viewW, 3);
     ctx.fillStyle = '#f3e4c6';
     const dash = 44, gap = 36;
-    for (let x = -(roadX % (dash + gap)); x < viewW; x += dash + gap) ctx.fillRect(Math.floor(x), 250, dash, 4);
+    for (let x = -(roadX % (dash + gap)); x < viewW; x += dash + gap) ctx.fillRect(snap(x), 250, dash, 4);
     ctx.fillStyle = '#fad46f'; ctx.fillRect(0, ROAD_BOTTOM, viewW, WORLD_H - ROAD_BOTTOM + 400);
     ctx.fillStyle = '#e0b552';
     for (let i = 0; i < 14; i++) {
       const px = ((i * 97 - roadX) % (viewW + 40) + viewW + 40) % (viewW + 40) - 20;
-      ctx.fillRect(Math.floor(px), ROAD_BOTTOM + 6 + (i * 37) % 14, 6, 3);
+      ctx.fillRect(snap(px), ROAD_BOTTOM + 6 + (i * 37) % 14, 6, 3);
     }
   }
 
-  // Each cactus is painted once into its own small canvas, which keeps slow phones smooth
-  const cactusCache = new Map();
-  function cactusImage(map) {
-    if (cactusCache.has(map)) return cactusCache.get(map);
+  // Each obstacle is painted once into its own small canvas, which keeps slow phones smooth
+  const obstacleCache = new Map();
+  function obstacleImage({ map, col }) {
+    if (obstacleCache.has(map)) return obstacleCache.get(map);
     const c = document.createElement('canvas');
     c.width = map[0].length * PX; c.height = map.length * PX;
     const g = c.getContext('2d');
     map.forEach((row, r) => {
       for (let i = 0; i < row.length; i++) {
         if (row[i] === '.') continue;
-        g.fillStyle = CACTUS_COL[row[i]];
+        g.fillStyle = col[row[i]];
         g.fillRect(i * PX, r * PX, PX, PX);
       }
     });
-    cactusCache.set(map, c);
+    obstacleCache.set(map, c);
     return c;
   }
-  function drawCactus(o) {
+  function drawObstacle(o) {
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(cactusImage(o.map), Math.floor(o.x), Math.floor(o.y));
+    ctx.drawImage(obstacleImage(o.kind), snap(o.x), snap(o.y));
     ctx.imageSmoothingEnabled = true;
   }
 
@@ -367,7 +393,7 @@
     if (!ready(image)) return;
     const bob = dino.grounded && state === 'playing' ? (Math.floor(time * 10) % 2) * -3 : 0;
     const pad = DINO_PAD * DINO_H / 260; // the outline sits in a margin around the body
-    ctx.drawImage(image, dino.x - pad, dino.y + bob - pad, DINO_W + 2 * pad, DINO_H + 2 * pad);
+    drawSized(image, dino.x - pad, dino.y + bob - pad, DINO_W + 2 * pad, DINO_H + 2 * pad);
   }
 
   // Jersey 10 draws smaller than its size suggests, so sizes are scaled up here
@@ -399,7 +425,7 @@
     drawStreet();
     if (plane) drawPlane(plane);
     drawRoad();
-    obstacles.forEach(drawCactus);
+    obstacles.forEach(drawObstacle);
     drawJumpFx();
     drawDino(art.dino);
     ctx.fillStyle = '#f3e4c6';
@@ -449,7 +475,7 @@
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = MONO_BG; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, dpr * offsetY);
+    ctx.setTransform(ppu, 0, 0, ppu, 0, Math.round(dpr * offsetY));
 
     if (state === 'ready') { drawMono(); return; }
 
