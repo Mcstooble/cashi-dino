@@ -45,7 +45,7 @@
     ocash: 'https://youtube.com/shorts/VMH-85NfBmA'
   };
   const shareText = s => [
-    `I scored ${s} on the Cashi dino game. Can you beat me? Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`,
+    `I got ${s} on the Cashi dino. Bet you can't beat me 😏 Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`,
     '', `Get the app: ${LINKS.app}`,
     '', 'How to top up Cashi:', `Bankak: ${LINKS.bankak}`, `Fawry: ${LINKS.fawry}`, `OCash: ${LINKS.ocash}`
   ].join('\n');
@@ -483,7 +483,7 @@
       } else {
         text('GAME OVER', viewW / 2, top + 16, 16, 'center');
         text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
-        button(bx, top + 66, bw, 34, 'SHARE ON WHATSAPP', 10, PURPLE, YELLOW, shareOnWhatsApp);
+        button(bx, top + 66, bw, 34, 'CHALLENGE A FRIEND', 10, PURPLE, YELLOW, shareOnWhatsApp);
         button(bx, top + 108, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
         button(bx + half + 8, top + 108, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
         text('TAP TO PLAY AGAIN', viewW / 2, top + 148, 10, 'center', blink ? PURPLE : '#b07800');
