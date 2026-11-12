@@ -467,7 +467,7 @@
 
     if (state === 'over') {
       const blink = Math.floor(time * 2) % 2 === 0;
-      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 30, h = 178;
+      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 30, h = 200;
       ctx.fillStyle = 'rgba(255,252,245,0.96)';
       ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
@@ -483,10 +483,19 @@
       } else {
         text('GAME OVER', viewW / 2, top + 16, 16, 'center');
         text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
-        button(bx, top + 66, bw, 34, 'CHALLENGE A FRIEND', 10, PURPLE, YELLOW, shareOnWhatsApp);
-        button(bx, top + 108, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
-        button(bx + half + 8, top + 108, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
-        text('TAP TO PLAY AGAIN', viewW / 2, top + 148, 10, 'center', blink ? PURPLE : '#b07800');
+        // The Zain message again, with DATA FREE on a yellow band like the start box
+        ctx.font = font(10);
+        const a = 'Cashi is ', b = 'DATA FREE', c = ' for Zain SIM cards';
+        const aw = ctx.measureText(a).width, dw = ctx.measureText(b).width, cw = ctx.measureText(c).width;
+        const lx = (viewW - aw - dw - cw) / 2, ly = top + 66;
+        ctx.fillStyle = YELLOW; ctx.fillRect(lx + aw - 3, ly - 4, dw + 6, 18);
+        text(a, lx, ly, 10, 'left', PURPLE, null);
+        text(b, lx + aw, ly, 10, 'left', PURPLE, null);
+        text(c, lx + aw + dw, ly, 10, 'left', PURPLE, null);
+        button(bx, top + 88, bw, 34, 'CHALLENGE A FRIEND', 10, PURPLE, YELLOW, shareOnWhatsApp);
+        button(bx, top + 130, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
+        button(bx + half + 8, top + 130, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
+        text('TAP TO PLAY AGAIN', viewW / 2, top + 170, 10, 'center', blink ? PURPLE : '#b07800');
       }
     }
   }
