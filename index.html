@@ -344,13 +344,11 @@
       plane.x -= plane.v * dt;
       if (plane.x < -PLANE_W - BANNER_ROOM) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
     }
-    // The Zain logo floats across the sky when the plane is away, on screen for as long as the plane and its banner
-    if (!zain && !plane && time > nextZainAt && zainMark && ready(zainMark)) {
-      const secs = (viewW + 10 + PLANE_W + BANNER_ROOM) / (70 + Math.random() * 30);
-      zain = { x: viewW + 10, y: 26 + Math.random() * 24, v: (viewW + 20 + ZAIN_W) / secs };
-    }
+    // The Zain logo floats across the sky when the plane is away, drifting with the buildings
+    // and never taking more than 6 seconds to cross
+    if (!zain && !plane && time > nextZainAt && zainMark && ready(zainMark)) zain = { x: viewW + 10, y: 26 + Math.random() * 24 };
     if (zain) {
-      zain.x -= zain.v * dt;
+      zain.x -= Math.max(move * 0.25, (viewW + 20 + ZAIN_W) / 6 * dt);
       if (zain.x < -ZAIN_W - 10) { zain = null; nextZainAt = time + 8 + Math.random() * 10; }
     }
 
