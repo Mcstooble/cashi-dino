@@ -344,8 +344,11 @@
       plane.x -= plane.v * dt;
       if (plane.x < -PLANE_W - BANNER_ROOM) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
     }
-    // The Zain logo floats across the sky when the plane is away
-    if (!zain && !plane && time > nextZainAt && zainMark && ready(zainMark)) zain = { x: viewW + 10, y: 26 + Math.random() * 24, v: 35 + Math.random() * 15 };
+    // The Zain logo floats across the sky when the plane is away, on screen for as long as the plane and its banner
+    if (!zain && !plane && time > nextZainAt && zainMark && ready(zainMark)) {
+      const secs = (viewW + 10 + PLANE_W + BANNER_ROOM) / (70 + Math.random() * 30);
+      zain = { x: viewW + 10, y: 26 + Math.random() * 24, v: (viewW + 20 + ZAIN_W) / secs };
+    }
     if (zain) {
       zain.x -= zain.v * dt;
       if (zain.x < -ZAIN_W - 10) { zain = null; nextZainAt = time + 8 + Math.random() * 10; }
@@ -712,12 +715,6 @@
     dust.forEach(d => { const s = 3 + (0.35 - d.life) * 14; ctx.globalAlpha = d.life / 0.35; ctx.fillRect(d.x, d.y - s, s, s); });
     ctx.globalAlpha = 1;
     text(scoreText(), hudX, 14, 12);
-    if (coinCount) {
-      ctx.font = font(12);
-      const cx = hudX + ctx.measureText(scoreText()).width + 14;
-      drawSized(coinImg, cx, 15, 14, 14 * (COIN_W + COIN_DEPTH + 2) / (COIN_W + 2));
-      text('x' + coinCount, cx + 18, 14, 12);
-    }
   }
 
   // The grey offline look the game opens with
@@ -803,7 +800,7 @@
         button(bx + half / 2 + 4, top + 124, half, 28, 'BACK', 8, IVORY, PURPLE, () => { topupOpen = false; });
       } else {
         text('GAME OVER', viewW / 2, top + 16, 16, 'center');
-        text('SCORE: ' + score + (coinCount ? '   COINS: ' + coinCount : ''), viewW / 2, top + 42, 12, 'center');
+        text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
         // The Zain message again, with DATA FREE on a yellow band like the start box
         ctx.font = font(10);
         const a = 'Cashi is ', b = 'DATA FREE', c = ' for Zain SIM cards';
