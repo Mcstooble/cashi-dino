@@ -27,7 +27,7 @@
   // World is 300 units tall; the screen scales to fit
   const WORLD_H = 300, MIN_W = 520, MIN_W_UPRIGHT = 360;
   const STREET_H = 236, GROUND_Y = 262, ROAD_BOTTOM = 280;
-  const DINO_H = 96, DINO_W = DINO_H * 275 / 260;
+  const DINO_H = 96, DINO_W = DINO_H * 275 / 260, DINO_PAD = 8;
   const TILE_W = STREET_H * 496 / 480;            // one block of shops
   // The street repeats every 5 blocks. Blocks 1 and 4 have a yellow Cashi Merchant tea stall,
   // and the CashiPlus store stands in the shop line where block 2 meets block 3.
@@ -38,7 +38,17 @@
   const START_SPEED = 260, ACCEL = 7;
   let maxSpeed = 640; // lower on upright phones, which see less of the road ahead
   const REVEAL_TIME = 1.3;
-  const shareText = s => `I scored ${s} on the Cashi dino game. Can you beat me? Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`;
+  const LINKS = {
+    app: 'https://getcashi.com/en/links',
+    bankak: 'https://youtube.com/shorts/tziwyQtkj5U',
+    fawry: 'https://youtube.com/shorts/59E-KPfbuAE',
+    ocash: 'https://youtube.com/shorts/VMH-85NfBmA'
+  };
+  const shareText = s => [
+    `I scored ${s} on the Cashi dino game. Can you beat me? Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`,
+    '', `Get the app: ${LINKS.app}`,
+    '', 'How to top up Cashi:', `Bankak: ${LINKS.bankak}`, `Fawry: ${LINKS.fawry}`, `OCash: ${LINKS.ocash}`
+  ].join('\n');
 
   // Older Android browsers lack rounded rectangles on canvas
   if (!CanvasRenderingContext2D.prototype.roundRect) {
@@ -54,8 +64,9 @@
   const ctx = canvas.getContext('2d');
   let scale = 1, viewW = MIN_W, offsetY = 0, dpr = 1, hudX = 14;
 
-  const img = name => { const i = new Image(); i.src = 'src/' + name; return i; };
-  const art = { dino: img('dino.png'), dinoGrey: img('dino_grey.png'), street: img('street.jpg'), merchant: img('street_merchant.jpg'), store: img('store.png') };
+  const ART_VERSION = 2; // raise when an image changes so browsers fetch the new one
+  const img = name => { const i = new Image(); i.src = 'src/' + name + '?v=' + ART_VERSION; return i; };
+  const art = { dino: img('dino.png'), dinoGrey: img('dino_grey.png'), street: img('street.jpg'), merchant: img('street_merchant.jpg'), tuktuk: img('street_tuktuk.jpg'), store: img('store.png') };
   const ready = i => i.complete && i.naturalWidth > 0;
 
   function resize() {
@@ -84,33 +95,52 @@
   const PX = 4;
 
   // ready: grey offline look. reveal: colour sweeps in. playing. over.
-  let state = 'ready', revealStart = 0, overAt = 0, shareBtn = null, plane = null, nextPlaneAt = 3;
-  let speed, distance, score, obstacles, nextGap, streetX, roadX, dino, time = 0, dust;
+  let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, plane = null, nextPlaneAt = 3;
+  let speed, distance, score, obstacles, nextGap, streetX, roadX, dino, time = 0, dust, puffs, jumpAt = -9;
 
   function reset(firstRun) {
     speed = START_SPEED; distance = 0; score = 0;
-    obstacles = []; nextGap = firstRun ? 760 : 420; roadX = 0; dust = [];
+    obstacles = []; nextGap = firstRun ? 760 : 420; roadX = 0; dust = []; puffs = []; jumpAt = -9; topupOpen = false;
     streetX = TILE_W * STORE_AT - viewW / 2; // CashiPlus store sits mid screen when the colour arrives
     dino = { x: 46, y: GROUND_Y - DINO_H, vy: 0, grounded: true };
   }
   reset(true);
 
-  function shareOnWhatsApp() {
-    const url = 'https://wa.me/?text=' + encodeURIComponent(shareText(score));
-    if (!window.open(url, '_blank')) location.href = url;
+  function openLink(url) {
+    const w = window.open(url, '_blank');
+    if (w) w.opener = null; else location.href = url;
   }
+  const shareOnWhatsApp = () => openLink('https://wa.me/?text=' + encodeURIComponent(shareText(score)));
+  const buttonAt = (wx, wy) => buttons.find(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
 
   function tap(wx, wy) {
     if (state === 'ready') { state = 'reveal'; revealStart = time; nextPlaneAt = time + REVEAL_TIME + 1.5; return; }
     if (state === 'over') {
       if (time - overAt < 0.5) return; // a late jump tap should not restart straight away
-      const b = shareBtn;
-      if (b && wx !== undefined && wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h) { shareOnWhatsApp(); return; }
+      if (wx !== undefined && buttonAt(wx, wy)) return; // buttons act on click, so links open in a new tab on phones
+      if (topupOpen) { topupOpen = false; return; }
       reset(false); state = 'playing'; return;
     }
-    if (state === 'playing' && dino.grounded) { dino.vy = -JUMP_V; dino.grounded = false; }
+    if (state === 'playing' && dino.grounded) { dino.vy = -JUMP_V; dino.grounded = false; jumpAt = time; kickUp(10, 1); }
+  }
+
+  // Sand clouds behind the feet on take off (big) and landing (small)
+  function kickUp(n, power) {
+    for (let i = 0; i < n; i++) {
+      const life = 0.35 + Math.random() * 0.25 * power;
+      puffs.push({
+        x: dino.x + DINO_W * (0.15 + Math.random() * 0.3), y: GROUND_Y - 2 - Math.random() * 6,
+        vx: -(15 + Math.random() * 60) * power, vy: -(15 + Math.random() * 45) * power,
+        r: (6 + Math.random() * 6) * (0.6 + power * 0.4), life, max: life
+      });
+    }
   }
   canvas.addEventListener('pointerdown', e => { e.preventDefault(); tap(e.clientX / scale, (e.clientY - offsetY) / scale); });
+  canvas.addEventListener('click', e => {
+    if (state !== 'over' || time - overAt < 0.5) return;
+    const b = buttonAt(e.clientX / scale, (e.clientY - offsetY) / scale);
+    if (b) b.act();
+  });
   window.addEventListener('keydown', e => {
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
   });
@@ -152,7 +182,12 @@
 
     dino.vy += GRAVITY * dt;
     dino.y += dino.vy * dt;
-    if (dino.y >= GROUND_Y - DINO_H) { dino.y = GROUND_Y - DINO_H; dino.vy = 0; dino.grounded = true; }
+    if (dino.y >= GROUND_Y - DINO_H) {
+      if (!dino.grounded) kickUp(4, 0.5);
+      dino.y = GROUND_Y - DINO_H; dino.vy = 0; dino.grounded = true;
+    }
+    puffs.forEach(p => { p.x += (p.vx - speed) * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94; p.life -= dt; });
+    puffs = puffs.filter(p => p.life > 0);
 
     if (dino.grounded && Math.random() < 0.35) dust.push({ x: dino.x + 20, y: GROUND_Y - 4, life: 0.35 });
     dust.forEach(d => { d.x -= move; d.life -= dt; });
@@ -184,9 +219,11 @@
 
   // Purple Cashi sign on the rear side panel of the tuk tuk
   function drawTuktukSign(tileX) {
-    ctx.fillStyle = PURPLE;
-    ctx.beginPath(); ctx.roundRect(tileX + 82, 211, 30, 11, 2); ctx.fill();
-    text('Cashi', tileX + 97, 214, 5.5, 'center', YELLOW, null);
+    // The tuk tuk body is painted purple in the art; the name sits on its side panel
+    ctx.font = font(5);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillStyle = OUTLINE; ctx.fillText('Cashi', tileX + 95, 212);
+    ctx.fillStyle = YELLOW; ctx.fillText('Cashi', tileX + 94.5, 211.5);
   }
 
   // Yellow and purple Cashi plane, drawn as a clean illustration with outlines like the street art.
@@ -253,9 +290,10 @@
     for (let i = Math.floor(streetX / TILE_W); i * TILE_W - streetX < viewW; i++) {
       const x = i * TILE_W - streetX;
       const merchant = MERCHANT_BLOCKS.includes(wrap(i, CYCLE)) && ready(art.merchant);
-      ctx.drawImage(merchant ? art.merchant : art.street, Math.floor(x), 0, Math.ceil(TILE_W) + 1, STREET_H);
+      const tuktuk = TUKTUK_BLOCKS.includes(wrap(i, CYCLE)) && ready(art.tuktuk);
+      ctx.drawImage(merchant ? art.merchant : tuktuk ? art.tuktuk : art.street, Math.floor(x), 0, Math.ceil(TILE_W) + 1, STREET_H);
       if (merchant) drawMerchantSign(x);
-      if (TUKTUK_BLOCKS.includes(wrap(i, CYCLE))) drawTuktukSign(x);
+      if (tuktuk) drawTuktukSign(x);
     }
     if (!ready(art.store)) return;
     for (let k = Math.floor((streetX - STORE_AT * TILE_W) / (CYCLE * TILE_W)); ; k++) {
@@ -305,10 +343,31 @@
     ctx.imageSmoothingEnabled = true;
   }
 
+  function drawJumpFx() {
+    puffs.forEach(p => {
+      const t = 1 - p.life / p.max, r = p.r * (1 + t * 0.8);
+      ctx.globalAlpha = Math.min(1, (p.life / p.max) * 1.6);
+      ctx.fillStyle = '#d9bf8c'; ctx.beginPath(); ctx.arc(p.x, p.y + 1.5, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#f6ead2'; ctx.beginPath(); ctx.arc(p.x - 0.5, p.y, r * 0.88, 0, Math.PI * 2); ctx.fill();
+    });
+    // Speed lines trail down and back from the feet just after take off
+    const since = time - jumpAt;
+    if (since < 0.35) {
+      ctx.globalAlpha = 0.85 * (1 - since / 0.35);
+      ctx.strokeStyle = '#8a6d43'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+      const fx = dino.x + DINO_W * 0.35, fy = dino.y + DINO_H * 0.92;
+      [[-4, -2, 34], [6, 4, 28], [-14, 6, 22], [-22, -6, 18]].forEach(([dx, dy, len]) => {
+        ctx.beginPath(); ctx.moveTo(fx + dx, fy + dy); ctx.lineTo(fx + dx - len * 0.8, fy + dy + len * 0.6); ctx.stroke();
+      });
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawDino(image) {
     if (!ready(image)) return;
     const bob = dino.grounded && state === 'playing' ? (Math.floor(time * 10) % 2) * -3 : 0;
-    ctx.drawImage(image, dino.x, dino.y + bob, DINO_W, DINO_H);
+    const pad = DINO_PAD * DINO_H / 260; // the outline sits in a margin around the body
+    ctx.drawImage(image, dino.x - pad, dino.y + bob - pad, DINO_W + 2 * pad, DINO_H + 2 * pad);
   }
 
   // Jersey 10 draws smaller than its size suggests, so sizes are scaled up here
@@ -332,6 +391,7 @@
     if (plane) drawPlane(plane);
     drawRoad();
     obstacles.forEach(drawCactus);
+    drawJumpFx();
     drawDino(art.dino);
     ctx.fillStyle = '#f3e4c6';
     dust.forEach(d => { const s = 3 + (0.35 - d.life) * 14; ctx.globalAlpha = d.life / 0.35; ctx.fillRect(d.x, d.y - s, s, s); });
@@ -369,6 +429,14 @@
     }
   }
 
+  function button(x, y, w, h, label, size, fill, color, act) {
+    ctx.fillStyle = fill;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = PURPLE; ctx.stroke();
+    text(label, x + w / 2, y + (h - size * FONT_SCALE) / 2 + size * 0.35, size, 'center', color, null);
+    buttons.push({ x, y, w, h, act });
+  }
+
   function draw() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = MONO_BG; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -399,19 +467,27 @@
 
     if (state === 'over') {
       const blink = Math.floor(time * 2) % 2 === 0;
-      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 36, h = 144;
+      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 30, h = 178;
       ctx.fillStyle = 'rgba(255,252,245,0.96)';
       ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
-      text('GAME OVER', viewW / 2, top + 16, 16, 'center');
-      text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
-      // WhatsApp share button
-      const bw = Math.min(w - 40, 250), bx = (viewW - bw) / 2, by = top + 62, bh = 38;
-      shareBtn = { x: bx, y: by, w: bw, h: bh };
-      ctx.fillStyle = PURPLE;
-      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 8); ctx.fill();
-      text('SHARE ON WHATSAPP', viewW / 2, by + 14, 10, 'center', YELLOW, null);
-      text('TAP TO PLAY AGAIN', viewW / 2, top + 116, 10, 'center', blink ? PURPLE : '#b07800');
+      buttons = [];
+      const bw = Math.min(w - 40, 290), bx = (viewW - bw) / 2, half = (bw - 8) / 2;
+      if (topupOpen) {
+        // Pick a bank to watch its top up video
+        text('TOP UP CASHI FROM', viewW / 2, top + 26, 13, 'center');
+        const third = (bw - 16) / 3;
+        [['Bankak', LINKS.bankak], ['Fawry', LINKS.fawry], ['OCash', LINKS.ocash]].forEach(([label, url], i) =>
+          button(bx + i * (third + 8), top + 64, third, 40, label, 10, PURPLE, YELLOW, () => openLink(url)));
+        button(bx + half / 2 + 4, top + 124, half, 28, 'BACK', 8, IVORY, PURPLE, () => { topupOpen = false; });
+      } else {
+        text('GAME OVER', viewW / 2, top + 16, 16, 'center');
+        text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
+        button(bx, top + 66, bw, 34, 'SHARE ON WHATSAPP', 10, PURPLE, YELLOW, shareOnWhatsApp);
+        button(bx, top + 108, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
+        button(bx + half + 8, top + 108, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
+        text('TAP TO PLAY AGAIN', viewW / 2, top + 148, 10, 'center', blink ? PURPLE : '#b07800');
+      }
     }
   }
 
