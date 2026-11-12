@@ -171,11 +171,22 @@
     if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); tap(); }
   });
 
+  const pick = list => list[Math.floor(Math.random() * list.length)];
+  const LOW = [OBSTACLES[0], OBSTACLES[1], OBSTACLES[3]]; // bush, two tyres, one can: short enough to clear in a row
+
+  // Once the game is fast enough, some obstacles come in a row of 2 or 3 that one long jump clears.
+  // Gaps vary, with the odd quiet stretch, so the rhythm never settles.
   function spawn() {
-    const kind = OBSTACLES[Math.floor(Math.random() * OBSTACLES.length)];
-    const w = kind.map[0].length * PX, h = kind.map.length * PX;
-    obstacles.push({ kind, x: viewW + 20, y: GROUND_Y - h + 2, w, h });
-    nextGap = speed * 0.9 + 140 + Math.random() * 260;
+    const r = Math.random();
+    const count = speed >= 450 && r < 0.2 ? 3 : speed >= 340 && r < 0.4 ? 2 : 1;
+    let x = viewW + 20;
+    for (let n = 0; n < count; n++) {
+      const kind = count > 1 ? pick(LOW) : pick(OBSTACLES);
+      const w = kind.map[0].length * PX, h = kind.map.length * PX;
+      obstacles.push({ kind, x, y: GROUND_Y - h + 2, w, h });
+      x += w + 2;
+    }
+    nextGap = speed * 0.9 + 140 + (Math.random() < 0.2 ? 350 + Math.random() * 450 : Math.random() * 300);
   }
 
   function dinoBoxes() {
