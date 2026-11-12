@@ -382,6 +382,15 @@
     ctx.fillStyle = color; ctx.fillText(str, x, y);
   }
 
+  // Yellow band sized to the letters themselves, so it sits evenly around them
+  function highlight(str, x, y, size) {
+    ctx.font = font(size); ctx.textBaseline = 'top'; ctx.textAlign = 'left';
+    const m = ctx.measureText(str), pad = size * 0.3;
+    ctx.fillStyle = YELLOW;
+    ctx.fillRect(x - m.actualBoundingBoxLeft - pad, y - m.actualBoundingBoxAscent - pad,
+      m.actualBoundingBoxLeft + m.actualBoundingBoxRight + 2 * pad, m.actualBoundingBoxAscent + m.actualBoundingBoxDescent + 2 * pad);
+  }
+
   const scoreText = () => 'SCORE: ' + String(score).padStart(4, '0');
 
   // The full colour world
@@ -421,7 +430,7 @@
       ctx.font = font(13);
       const a = 'Cashi is ', b = 'DATA FREE', aw = ctx.measureText(a).width, bw = ctx.measureText(b).width;
       const lx = (viewW - aw - bw) / 2, ly = top + 16;
-      ctx.fillStyle = YELLOW; ctx.fillRect(lx + aw - 4, ly - 5, bw + 8, 23);
+      highlight(b, lx + aw, ly, 13);
       text(a, lx, ly, 13, 'left', PURPLE, null);
       text(b, lx + aw, ly, 13, 'left', PURPLE, null);
       text('for Zain users', viewW / 2, top + 44, 13, 'center', PURPLE, null);
@@ -488,7 +497,7 @@
         const a = 'Cashi is ', b = 'DATA FREE', c = ' for Zain SIM cards';
         const aw = ctx.measureText(a).width, dw = ctx.measureText(b).width, cw = ctx.measureText(c).width;
         const lx = (viewW - aw - dw - cw) / 2, ly = top + 66;
-        ctx.fillStyle = YELLOW; ctx.fillRect(lx + aw - 3, ly - 4, dw + 6, 18);
+        highlight(b, lx + aw, ly, 10);
         text(a, lx, ly, 10, 'left', PURPLE, null);
         text(b, lx + aw, ly, 10, 'left', PURPLE, null);
         text(c, lx + aw + dw, ly, 10, 'left', PURPLE, null);
