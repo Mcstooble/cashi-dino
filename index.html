@@ -69,21 +69,23 @@
   // Images are resized once to their size on screen, so each frame is a plain copy (easier on slow phones)
   const sized = new Map();
   function drawSized(i, x, y, w, h) {
-    let c = sized.get(i);
+    let bySize = sized.get(i);
+    if (!bySize) sized.set(i, bySize = new Map());
+    let c = bySize.get(w);
     if (!c) {
       c = document.createElement('canvas');
       c.width = Math.ceil(w * ppu); c.height = Math.ceil(h * ppu);
       const g = c.getContext('2d');
       g.imageSmoothingQuality = 'high';
       g.drawImage(i, 0, 0, c.width, c.height);
-      sized.set(i, c);
+      bySize.set(w, c);
     }
     ctx.drawImage(c, snap(x), snap(y), c.width / ppu, c.height / ppu);
   }
 
   const ART_VERSION = 2; // raise when an image changes so browsers fetch the new one
   const img = name => { const i = new Image(); i.src = 'src/' + name + '?v=' + ART_VERSION; return i; };
-  const art = { dino: img('dino.png'), dinoGrey: img('dino_grey.png'), street: img('street.jpg'), merchant: img('street_merchant.jpg'), tuktuk: img('street_tuktuk.jpg'), store: img('store.png') };
+  const art = { dino: img('dino.png'), dinoGrey: img('dino_grey.png'), street: img('street.jpg'), merchant: img('street_merchant.jpg'), tuktuk: img('street_tuktuk.jpg'), store: img('store.png'), pickup: img('pickup.png') };
   const ready = i => i.complete && i.naturalWidth > 0;
 
   function resize() {
@@ -119,6 +121,13 @@
     { col: CAN, map: ['444.44.444.44.', '4.4.5544.4.554', '44444444444444', '43111244311124', '43121244312124', '43111244311124', '43121244312124', '43111244311124', '43112244311224', '44444444444444'] }
   ];
   const PX = 4;
+
+  // The white pickup, cut from the designer's street art. Now and then a smaller one is an obstacle,
+  // only once the game is fast enough to clear it. Hit boxes follow the bed, cab and bonnet.
+  const PICKUP_H = 48, PICKUP_W = PICKUP_H * 331 / 121, PICKUP_SPEED = 370;
+  const PICKUP_BOXES = [[0, 0.34, 0.33, 0.66], [0.33, 0, 0.40, 1], [0.73, 0.36, 0.27, 0.64]];
+  // A full size one is parked in block 3, in front of that block's tuk tuk
+  const PICKUP_AT = 3, PARK_X = 66 * TILE_W / 496, PARK_W = 331 * TILE_W / 496, PARK_H = 121 * TILE_W / 496;
 
   // ready: grey offline look. reveal: colour sweeps in. playing. over.
   let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, plane = null, nextPlaneAt = 3, zain = null, nextZainAt = 0, zainMark = null;
@@ -184,7 +193,9 @@
     const r = Math.random();
     const count = speed >= 450 && r < 0.2 ? 3 : speed >= 340 && r < 0.4 ? 2 : 1;
     let x = viewW + 20;
-    for (let n = 0; n < count; n++) {
+    if (count === 1 && speed >= PICKUP_SPEED && Math.random() < 0.12 && ready(art.pickup)) {
+      obstacles.push({ pickup: true, x, y: GROUND_Y - PICKUP_H + 2, w: PICKUP_W, h: PICKUP_H });
+    } else for (let n = 0; n < count; n++) {
       const kind = count > 1 ? pick(LOW) : pick(OBSTACLES);
       const w = kind.map[0].length * PX, h = kind.map.length * PX;
       obstacles.push({ kind, x, y: GROUND_Y - h + 2, w, h });
@@ -248,8 +259,9 @@
     // One life: any obstacle ends the run
     const boxes = dinoBoxes();
     for (const o of obstacles) {
-      const ob = { x: o.x + 3, y: o.y + 3, w: o.w - 6, h: o.h - 3 };
-      if (boxes.some(b => hit(b, ob))) { state = 'over'; overAt = time; break; }
+      const parts = (o.pickup ? PICKUP_BOXES : [[0, 0, 1, 1]]).map(([fx, fy, fw, fh]) =>
+        ({ x: o.x + fx * o.w + 3, y: o.y + fy * o.h + 3, w: fw * o.w - 6, h: fh * o.h - 3 }));
+      if (parts.some(ob => boxes.some(b => hit(b, ob)))) { state = 'over'; overAt = time; break; }
     }
   }
 
@@ -391,6 +403,10 @@
       ctx.beginPath(); ctx.ellipse(c, STORE_BASE - 1, STORE_W * 0.5, 4, 0, 0, Math.PI * 2); ctx.fill();
       drawSized(art.store, c - STORE_W / 2, STORE_BASE - STORE_H, STORE_W, STORE_H);
     }
+    if (!ready(art.pickup)) return;
+    for (let i = Math.floor(streetX / TILE_W); i * TILE_W - streetX < viewW; i++) {
+      if (wrap(i, CYCLE) === PICKUP_AT) drawSized(art.pickup, i * TILE_W - streetX + PARK_X, STREET_H - PARK_H, PARK_W, PARK_H);
+    }
   }
 
   function drawRoad() {
@@ -425,6 +441,7 @@
     return c;
   }
   function drawObstacle(o) {
+    if (o.pickup) { drawSized(art.pickup, o.x, o.y, o.w, o.h); return; }
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(obstacleImage(o.kind), snap(o.x), snap(o.y));
     ctx.imageSmoothingEnabled = true;
