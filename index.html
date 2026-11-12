@@ -121,7 +121,7 @@
   const PX = 4;
 
   // ready: grey offline look. reveal: colour sweeps in. playing. over.
-  let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, plane = null, nextPlaneAt = 3;
+  let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, plane = null, nextPlaneAt = 3, zain = null, nextZainAt = 0, zainMark = null;
   let speed, distance, score, obstacles, nextGap, streetX, roadX, dino, time = 0, dust, puffs, jumpAt = -9;
 
   function reset(firstRun) {
@@ -140,7 +140,11 @@
   const buttonAt = (wx, wy) => buttons.find(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
 
   function tap(wx, wy) {
-    if (state === 'ready') { state = 'reveal'; revealStart = time; nextPlaneAt = time + REVEAL_TIME + 1.5; return; }
+    if (state === 'ready') {
+      state = 'reveal'; revealStart = time; nextPlaneAt = time + REVEAL_TIME + 1.5; nextZainAt = time + REVEAL_TIME + 4;
+      if (!zainMark) zainMark = img('zain_mark.png'); // small, and only fetched once the game has started
+      return;
+    }
     if (state === 'over') {
       if (time - overAt < 0.5) return; // a late jump tap should not restart straight away
       if (wx !== undefined && buttonAt(wx, wy)) return; // buttons act on click, so links open in a new tab on phones
@@ -211,10 +215,16 @@
     roadX += move;
 
     // A Cashi plane crosses the sky now and then
-    if (!plane && time > nextPlaneAt) plane = { x: viewW + 10, y: 22 + Math.random() * 30, v: 70 + Math.random() * 30 };
+    if (!plane && !zain && time > nextPlaneAt) plane = { x: viewW + 10, y: 22 + Math.random() * 30, v: 70 + Math.random() * 30 };
     if (plane) {
       plane.x -= plane.v * dt;
       if (plane.x < -PLANE_W - BANNER_ROOM) { plane = null; nextPlaneAt = time + 6 + Math.random() * 10; }
+    }
+    // The Zain logo floats across the sky when the plane is away
+    if (!zain && !plane && time > nextZainAt && zainMark && ready(zainMark)) zain = { x: viewW + 10, y: 26 + Math.random() * 24, v: 35 + Math.random() * 15 };
+    if (zain) {
+      zain.x -= zain.v * dt;
+      if (zain.x < -ZAIN_W - 10) { zain = null; nextZainAt = time + 8 + Math.random() * 10; }
     }
 
     dino.vy += GRAVITY * dt;
@@ -320,6 +330,46 @@
 
     drawSized(planeImg, x, y, PLANE_W, PLANE_H);
     text('Cashi', x + 62, y + 14, 10, 'center', PURPLE, null);
+  }
+
+  // Zain logo as a rounded purple diamond with depth and a soft shine, painted once at 4x like the plane.
+  // The white Zain mark is cut from the logo Zain supplied.
+  const ZAIN_W = 60, ZAIN_DEPTH = 4, ZAIN_K = 4;
+  let zainImg = null;
+  function paintZain() {
+    const c = document.createElement('canvas');
+    c.width = (ZAIN_W + 2) * ZAIN_K; c.height = (ZAIN_W + ZAIN_DEPTH + 2) * ZAIN_K;
+    const g = c.getContext('2d');
+    g.scale(ZAIN_K, ZAIN_K); g.translate(1, 1);
+    const h = ZAIN_W / 2, rad = 12;
+    const diamond = dy => {
+      g.beginPath();
+      g.moveTo(h / 2, h / 2 + dy);                    // start mid edge so every corner gets rounded
+      g.arcTo(h, dy, ZAIN_W, h + dy, rad);
+      g.arcTo(ZAIN_W, h + dy, h, ZAIN_W + dy, rad);
+      g.arcTo(h, ZAIN_W + dy, 0, h + dy, rad);
+      g.arcTo(0, h + dy, h, dy, rad);
+      g.closePath();
+    };
+    g.lineJoin = 'round'; g.lineWidth = 1.3; g.strokeStyle = LINE;
+    diamond(ZAIN_DEPTH); g.fillStyle = '#56215a'; g.fill(); g.stroke();      // the side, for depth
+    diamond(0);
+    const grad = g.createLinearGradient(0, 0, ZAIN_W, ZAIN_W);
+    grad.addColorStop(0, '#a556a3'); grad.addColorStop(1, '#73306f');
+    g.fillStyle = grad; g.fill();
+    g.save(); g.clip();                                                       // shine on the upper left
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.beginPath(); g.ellipse(h * 0.7, h * 0.55, h * 0.75, h * 0.38, -Math.PI / 4, 0, Math.PI * 2); g.fill();
+    g.restore();
+    diamond(0); g.stroke();
+    const mw = 42, mh = mw * zainMark.naturalHeight / zainMark.naturalWidth;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(zainMark, h - mw / 2, h - mh / 2, mw, mh);
+    return c;
+  }
+  function drawZain(z) {
+    if (!zainImg) zainImg = paintZain();
+    drawSized(zainImg, z.x - 1, z.y - 1 + Math.sin(time * 1.6) * 3, ZAIN_W + 2, ZAIN_W + ZAIN_DEPTH + 2);
   }
 
   function drawStreet() {
@@ -435,6 +485,7 @@
     ctx.fillStyle = '#5cc9d6'; ctx.fillRect(0, -offsetY / scale - 1, viewW, offsetY / scale + 2);
     drawStreet();
     if (plane) drawPlane(plane);
+    if (zain) drawZain(zain);
     drawRoad();
     obstacles.forEach(drawObstacle);
     drawJumpFx();
