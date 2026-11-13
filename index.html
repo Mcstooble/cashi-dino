@@ -737,13 +737,11 @@
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
+      text('Cashi Apps are', viewW / 2, top + 16, 13, 'center', PURPLE, null);
       ctx.font = font(13);
-      const a = 'Cashi is ', b = 'DATA FREE', aw = ctx.measureText(a).width, bw = ctx.measureText(b).width;
-      const lx = (viewW - aw - bw) / 2, ly = top + 16;
-      highlight(b, lx + aw, ly, 13);
-      text(a, lx, ly, 13, 'left', PURPLE, null);
-      text(b, lx + aw, ly, 13, 'left', PURPLE, null);
-      text('for Zain users', viewW / 2, top + 44, 13, 'center', PURPLE, null);
+      const b = 'DATA FREE', lx = (viewW - ctx.measureText(b).width) / 2, ly = top + 44;
+      highlight(b, lx, ly, 13);
+      text(b, lx, ly, 13, 'left', PURPLE, null);
       if (Math.floor(time * 2) % 2 === 0) text('TAP TO START', viewW / 2, top + 76, 11, 'center', MONO_INK, null);
     }
   }
@@ -804,7 +802,7 @@
         text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
         // The Zain message again, with DATA FREE on a yellow band like the start box
         ctx.font = font(10);
-        const a = 'Cashi is ', b = 'DATA FREE', c = ' for Zain SIM cards';
+        const a = 'Cashi Apps are ', b = 'DATA FREE', c = '';
         const aw = ctx.measureText(a).width, dw = ctx.measureText(b).width, cw = ctx.measureText(c).width;
         const lx = (viewW - aw - dw - cw) / 2, ly = top + 66;
         highlight(b, lx + aw, ly, 10);
