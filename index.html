@@ -683,6 +683,12 @@
   const font = size => `${size * FONT_SCALE}px "Jersey 10", monospace`;
   if (document.fonts) document.fonts.load(font(10));
 
+  // Largest size up to the one given at which every line fits the width, so longer wording never spills out
+  const fit = (lines, size, maxW) => {
+    for (; size > 6; size -= 0.5) { ctx.font = font(size); if (lines.every(l => ctx.measureText(l).width <= maxW)) break; }
+    return size;
+  };
+
   function text(str, x, y, size, align = 'left', color = PURPLE, shadow = IVORY) {
     ctx.font = font(size);
     ctx.textAlign = align; ctx.textBaseline = 'top';
@@ -737,13 +743,14 @@
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
-      text('Cashi Apps are', viewW / 2, top + 16, 13, 'center', PURPLE, null);
-      ctx.font = font(13);
-      const b = 'DATA FREE', c = ' with Zain', bw = ctx.measureText(b).width;
-      const lx = (viewW - bw - ctx.measureText(c).width) / 2, ly = top + 44;
-      highlight(b, lx, ly, 13);
-      text(b, lx, ly, 13, 'left', PURPLE, null);
-      text(c, lx + bw, ly, 13, 'left', PURPLE, null);
+      const s = fit(['Cashi apps are DATA FREE', 'for Zain users'], 13, w - 24);
+      ctx.font = font(s);
+      const a = 'Cashi apps are ', b = 'DATA FREE', aw = ctx.measureText(a).width, bw = ctx.measureText(b).width;
+      const lx = (viewW - aw - bw) / 2, ly = top + 16;
+      highlight(b, lx + aw, ly, s);
+      text(a, lx, ly, s, 'left', PURPLE, null);
+      text(b, lx + aw, ly, s, 'left', PURPLE, null);
+      text('for Zain users', viewW / 2, top + 44, s, 'center', PURPLE, null);
       if (Math.floor(time * 2) % 2 === 0) text('TAP TO START', viewW / 2, top + 76, 11, 'center', MONO_INK, null);
     }
   }
@@ -803,15 +810,17 @@
         text('GAME OVER', viewW / 2, top + 16, 16, 'center');
         text('SCORE: ' + score, viewW / 2, top + 42, 12, 'center');
         // The Zain message again, with DATA FREE on a yellow band like the start box
-        ctx.font = font(10);
-        const a = 'Cashi Apps are ', b = 'DATA FREE', c = ' with Zain';
+        const s = fit(['Cashi apps are DATA FREE for Zain users'], 10, w - 24);
+        ctx.font = font(s);
+        const a = 'Cashi apps are ', b = 'DATA FREE', c = ' for Zain users';
         const aw = ctx.measureText(a).width, dw = ctx.measureText(b).width, cw = ctx.measureText(c).width;
         const lx = (viewW - aw - dw - cw) / 2, ly = top + 66;
-        highlight(b, lx + aw, ly, 10);
-        text(a, lx, ly, 10, 'left', PURPLE, null);
-        text(b, lx + aw, ly, 10, 'left', PURPLE, null);
-        text(c, lx + aw + dw, ly, 10, 'left', PURPLE, null);
-        button(bx, top + 88, bw, 34, 'CHALLENGE A FRIEND', 10, PURPLE, YELLOW, shareOnWhatsApp);
+        highlight(b, lx + aw, ly, s);
+        text(a, lx, ly, s, 'left', PURPLE, null);
+        text(b, lx + aw, ly, s, 'left', PURPLE, null);
+        text(c, lx + aw + dw, ly, s, 'left', PURPLE, null);
+        const share = 'SHARE AND CHALLENGE A FRIEND';
+        button(bx, top + 88, bw, 34, share, fit([share], 10, bw - 16), PURPLE, YELLOW, shareOnWhatsApp);
         button(bx, top + 130, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
         button(bx + half + 8, top + 130, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
         text('TAP TO PLAY AGAIN', viewW / 2, top + 170, 10, 'center', blink ? PURPLE : '#b07800');
