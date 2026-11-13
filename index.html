@@ -50,9 +50,12 @@
     ocash: 'https://youtube.com/shorts/VMH-85NfBmA'
   };
   const shareText = s => [
-    `I got ${s} on the Cashi dino. Bet you can't beat me 😏 Cashi is DATA FREE for Zain users. ${location.href.split(/[?#]/)[0]}`,
+    'Cashi is DATA FREE for Zain users.',
+    '', `I got ${s} on the Cashi dino. Bet you can't beat me 😏`, location.href.split(/[?#]/)[0],
     '', `Get the app: ${LINKS.app}`,
-    '', 'How to top up Cashi:', `Bankak: ${LINKS.bankak}`, `Fawry: ${LINKS.fawry}`, `OCash: ${LINKS.ocash}`
+    '', 'How to top up Cashi:', `Bankak: ${LINKS.bankak}`,
+    '', `Fawry: ${LINKS.fawry}`,
+    '', `OCash: ${LINKS.ocash}`
   ].join('\n');
 
   // Older Android browsers lack rounded rectangles on canvas
