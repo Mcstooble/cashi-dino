@@ -249,6 +249,21 @@
     if (w) w.opener = null; else location.href = url;
   }
   const shareOnWhatsApp = () => openLink('https://wa.me/?text=' + encodeURIComponent(shareText(score)));
+  // For players without WhatsApp: copies the same message to paste anywhere, with an old phone fallback
+  let copiedAt = -9;
+  function copyShare() {
+    const t = shareText(score);
+    const done = () => { copiedAt = time; };
+    const fallback = () => {
+      const a = document.createElement('textarea');
+      a.value = t; a.setAttribute('readonly', ''); a.style.position = 'fixed'; a.style.opacity = '0';
+      document.body.appendChild(a); a.select();
+      try { if (document.execCommand('copy')) done(); } catch (e) {}
+      a.remove();
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback);
+    else fallback();
+  }
   const buttonAt = (wx, wy) => buttons.find(b => wx >= b.x && wx <= b.x + b.w && wy >= b.y && wy <= b.y + b.h);
 
   function tap(wx, wy) {
@@ -820,7 +835,10 @@
         text(b, lx + aw, ly, s, 'left', PURPLE, null);
         text(c, lx + aw + dw, ly, s, 'left', PURPLE, null);
         const share = 'SHARE AND CHALLENGE A FRIEND';
-        button(bx, top + 88, bw, 34, share, fit([share], 10, bw - 16), PURPLE, YELLOW, shareOnWhatsApp);
+        const cw2 = Math.round(bw * 0.28), sw = bw - cw2 - 8;
+        button(bx, top + 88, sw, 34, share, fit([share], 10, sw - 16), PURPLE, YELLOW, shareOnWhatsApp);
+        const copy = time - copiedAt < 2 ? 'COPIED!' : 'COPY LINK';
+        button(bx + sw + 8, top + 88, cw2, 34, copy, fit(['COPY LINK'], 9, cw2 - 12), IVORY, PURPLE, copyShare);
         button(bx, top + 130, half, 28, 'GET THE APP', 8, YELLOW, PURPLE, () => openLink(LINKS.app));
         button(bx + half + 8, top + 130, half, 28, 'HOW TO TOP UP CASHI', 8, YELLOW, PURPLE, () => { topupOpen = true; });
         text('TAP TO PLAY AGAIN', viewW / 2, top + 170, 10, 'center', blink ? PURPLE : '#b07800');
