@@ -52,6 +52,13 @@
     fawry: 'https://youtube.com/shorts/59E-KPfbuAE',
     ocash: 'https://youtube.com/shorts/VMH-85NfBmA'
   };
+  // WhatsApp channels page. English until the Arabic comes back from the translation sheet
+  const CHANNELS_BUTTON = 'Stay updated always!';
+  const CHANNELS = [
+    ['Join the MyCashi channel!', 'https://whatsapp.com/channel/0029VaEH85u4IBhBoXCrrc0h'],
+    ['Join the CashiLite channel!', 'https://whatsapp.com/channel/0029VbE1qoBLNSa5B5wUW80s'],
+    ['Join the CashiMobile channel!', 'https://whatsapp.com/channel/0029Vb9cjCaC6Zvijr4qGd38']
+  ];
   const GAME_URL = 'https://dino.getcashi.com/'; // the live game, whichever copy the message is shared from
   const shareText = s => [
     'تطبيقات كاشي شغالة بدون تنشيط لمستخدمين زين.',
@@ -236,13 +243,13 @@
   const PICKUP_AT = 3, PARK_X = 66 * TILE_W / 496, PARK_W = 331 * TILE_W / 496, PARK_H = 121 * TILE_W / 496;
 
   // ready: grey offline look. reveal: colour sweeps in. playing. over.
-  let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, plane = null, nextPlaneAt = 3, zain = null, nextZainAt = 0, zainMark = null;
+  let state = 'ready', revealStart = 0, overAt = 0, buttons = [], topupOpen = false, channelsOpen = false, plane = null, nextPlaneAt = 3, zain = null, nextZainAt = 0, zainMark = null;
   let speed, distance, score, obstacles, nextGap, streetX, roadX, dino, time = 0, dust, puffs, jumpAt = -9;
   let coins, coinCount, pops, runTime;
 
   function reset(firstRun) {
     speed = START_SPEED; distance = 0; score = 0;
-    obstacles = []; coins = []; coinCount = 0; pops = []; runTime = 0; nextGap = firstRun ? 760 : 420; roadX = 0; dust = []; puffs = []; jumpAt = -9; topupOpen = false;
+    obstacles = []; coins = []; coinCount = 0; pops = []; runTime = 0; nextGap = firstRun ? 760 : 420; roadX = 0; dust = []; puffs = []; jumpAt = -9; topupOpen = false; channelsOpen = false;
     streetX = TILE_W * STORE_AT - viewW / 2; // CashiPlus store sits mid screen when the colour arrives
     dino = { x: 46, y: GROUND_Y - DINO_H, vy: 0, grounded: true };
   }
@@ -279,7 +286,7 @@
     if (state === 'over') {
       if (time - overAt < 0.5) return; // a late jump tap should not restart straight away
       if (wx !== undefined && buttonAt(wx, wy)) return; // buttons act on click, so links open in a new tab on phones
-      if (topupOpen) { topupOpen = false; return; }
+      if (topupOpen || channelsOpen) { topupOpen = channelsOpen = false; return; }
       reset(false); state = 'playing'; return;
     }
     if (state === 'playing' && dino.grounded) { dino.vy = -JUMP_V; dino.grounded = false; jumpAt = time; kickUp(10, 1); }
@@ -711,7 +718,7 @@
 
   // y is the top of a line one font size tall; the words sit in the middle of it, right to left
   function text(str, x, y, size, align = 'left', color = PURPLE, shadow = IVORY) {
-    ctx.font = font(size); ctx.direction = 'rtl';
+    ctx.font = font(size); ctx.direction = /[\u0600-\u06FF]/.test(str) ? 'rtl' : 'ltr'; // English stays left to right
     ctx.textAlign = align; ctx.textBaseline = 'middle';
     const my = y + size * FONT_SCALE / 2;
     if (shadow) { ctx.fillStyle = shadow; ctx.fillText(str, x + 1, my + 1); }
@@ -830,13 +837,20 @@
 
     if (state === 'over') {
       const blink = Math.floor(time * 2) % 2 === 0;
-      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 30, h = 200;
+      const w = Math.min(viewW - 32, 400), x = (viewW - w) / 2, top = 30, h = 236;
       ctx.fillStyle = 'rgba(255,252,245,0.96)';
       ctx.beginPath(); ctx.roundRect(x, top, w, h, 12); ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = PURPLE; ctx.stroke();
       buttons = [];
       const bw = Math.min(w - 40, 290), bx = (viewW - bw) / 2, half = (bw - 8) / 2;
-      if (topupOpen) {
+      if (channelsOpen) {
+        // Pick a WhatsApp channel to join
+        text(CHANNELS_BUTTON, viewW / 2, top + 18, 13, 'center');
+        const cs = fit(CHANNELS.map(c => c[0]), 10, bw - 20);
+        CHANNELS.forEach(([label, url], i) =>
+          button(bx, top + 52 + i * 42, bw, 34, label, cs, PURPLE, YELLOW, () => openLink(url)));
+        button(bx + half / 2 + 4, top + 184, half, 28, 'أرجع', 8, IVORY, PURPLE, () => { channelsOpen = false; });
+      } else if (topupOpen) {
         // Pick a bank to watch its top up video
         text('اشحن كاشي من', viewW / 2, top + 22, 13, 'center');
         const third = (bw - 16) / 3, banks = [['بنكك', LINKS.bankak], ['فوري', LINKS.fawry], ['اوو-كاش', LINKS.ocash]];
@@ -859,7 +873,8 @@
         const small = fit(['نزل التطبيق', 'كيف اشحن كاشي'], 8, half - 12);
         button(bx + half + 8, top + 130, half, 28, 'نزل التطبيق', small, YELLOW, PURPLE, () => openLink(LINKS.app));
         button(bx, top + 130, half, 28, 'كيف اشحن كاشي', small, YELLOW, PURPLE, () => { topupOpen = true; });
-        text('اضغط وارجع للعبة', viewW / 2, top + 168, 10, 'center', blink ? PURPLE : '#b07800');
+        button(bx, top + 166, bw, 28, CHANNELS_BUTTON, fit([CHANNELS_BUTTON], 8, bw - 16), YELLOW, PURPLE, () => { channelsOpen = true; });
+        text('اضغط وارجع للعبة', viewW / 2, top + 204, 10, 'center', blink ? PURPLE : '#b07800');
       }
     }
   }
