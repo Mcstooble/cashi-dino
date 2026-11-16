@@ -52,9 +52,10 @@
     fawry: 'https://youtube.com/shorts/59E-KPfbuAE',
     ocash: 'https://youtube.com/shorts/VMH-85NfBmA'
   };
+  const GAME_URL = 'https://dino.getcashi.com/'; // the live game, whichever copy the message is shared from
   const shareText = s => [
     'تطبيقات كاشي شغالة بدون تنشيط لمستخدمين زين.',
-    '', `جبت ${s} في ديناصور كاشي، اتحداك تغلبني 😏`, location.href.split(/[?#]/)[0],
+    '', `جبت ${s} في ديناصور كاشي، اتحداك تغلبني 😏`, GAME_URL,
     '', `نزل التطبيق: ${LINKS.app}`,
     '', 'كيف اشحن كاشي:', `بنكك: ${LINKS.bankak}`,
     '', `فوري: ${LINKS.fawry}`,
@@ -483,10 +484,10 @@
     ctx.closePath();
     ctx.fillStyle = PURPLE; ctx.fill();
     ctx.lineWidth = 1; ctx.stroke();
-    text(BANNER, bx + bw / 2, by + 2, BANNER_SIZE, 'center', YELLOW, null);
+    textMid(BANNER, bx + bw / 2, by + bh / 2 + wave(bw / 2), BANNER_SIZE, YELLOW);
 
     drawSized(planeImg, x, y, PLANE_W, PLANE_H);
-    text('كاشي', x + 62, y + 13, 10, 'center', PURPLE, null);
+    textMid('كاشي', x + 62, y + 21.5, 8, PURPLE); // in the yellow above the purple stripe
   }
 
   // Zain logo as a rounded purple diamond with depth and a soft shine, painted once at 4x like the plane.
@@ -715,6 +716,13 @@
     const my = y + size * FONT_SCALE / 2;
     if (shadow) { ctx.fillStyle = shadow; ctx.fillText(str, x + 1, my + 1); }
     ctx.fillStyle = color; ctx.fillText(str, x, my);
+  }
+
+  // Centres the drawn letters themselves on (cx, cy), so Arabic sits level inside a shape
+  function textMid(str, cx, cy, size, color) {
+    ctx.font = font(size); ctx.direction = 'rtl'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    const m = ctx.measureText(str);
+    ctx.fillStyle = color; ctx.fillText(str, cx, cy + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
   }
 
   // Yellow band sized to the letters themselves, so it sits evenly around them (x is the left edge)
